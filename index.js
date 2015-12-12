@@ -220,7 +220,7 @@ User.prototype.login = function(request, reply) {
         expire : moment().add(1, "day").format()
       }, function(err, result) {
         if (err) return reply(err);
-        var response = reply({success:true})
+        var response = reply({success:true, userId : user._id })
           .type("application/json")
           .header("X-Token", result.tokenId + " " + result.key)
           .header("X-Current-User", profile._id)
