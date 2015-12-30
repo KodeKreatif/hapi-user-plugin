@@ -7,6 +7,7 @@ var uuid = require("uuid");
 var nodemailer = require("nodemailer");
 var faker = require("faker");
 var profileModel = require(__dirname + "/../../api/profiles/index").model();
+var inMemoryTokens = [];
 
 var schema = {
   username : Joi.string().email().required(),
@@ -64,15 +65,35 @@ var tokenModel = function() {
 
 var User = function(server, options, next) {
   this.server = server;
+  this.options = options || {};
   
   var getCredentials = function(id, callback) {
-    tokenModel().findOne({tokenId:id}, function(err, result) {
-      if (err) return callback(err);
-      if (!result) return callback({
-        error: "Unauthorized",
-        message: "Unknown credentials",
-        statusCode: 401
-      }).code(401);
+    var checkToken = function(id, cb){
+      if (options.authInMemory) {
+        var result = false;
+        _.some(inMemoryTokens, function(t){
+          if (t.tokenId === id) {
+            result = t;
+            return;
+          }
+        })
+        if (!result) {
+          return cb(new Error("Unknown credentials"));
+        }
+        return cb(null, result);
+      } else {
+        tokenModel().findOne({tokenId:id}, function(err, result) {
+          if (err) return cb(err);
+          if (!result) return cb({
+            error: "Unauthorized",
+            message: "Unknown credentials",
+            statusCode: 401
+          }).code(401);
+          return cb(null, result);
+        })
+      }
+    }
+    checkToken(id, function(err, result){
       model().findOne({_id: result.userId }, function(err, user) {
         if (user.isActive) {
           // Check expire time
@@ -90,16 +111,32 @@ var User = function(server, options, next) {
               }
               // Renew expire time for each request.
               result.expire = moment().add(1, "day").format();
+              if (options.authInMemory) {
+                _.some(inMemoryTokens, function(t){
+                  if (t.tokenId === result.tokenId) {
+                    t = result; 
+                    return;
+                  }
+                })
+                return callback(null, credentials);
+              }
               result.save(function(err) {
                 if (err) return callback(err);
                 return callback(null, credentials);
               });
-
             });
-
-         
          } else {
-            result.remove();
+            if (options.authInMemory) {
+              for (var i = 0; i < inMemoryTokens.length; i++) {
+                var t = inMemoryTokens[i];
+                if (t.tokenId === result.tokenId) {
+                  inMemoryTokens.splice(i, 1);
+                  break;
+                }
+              }
+            } else {
+              result.remove();
+            }
             return callback({
               error: "Unauthorized",
               message: "Expired token",
@@ -114,10 +151,9 @@ var User = function(server, options, next) {
           }, null)
         }
       })
-    })
+    });
   }
-
-console.log(options);
+  console.log(options);
   // Register hawk  
   server.register(require("hapi-auth-hawk"), function(err) {
     server.auth.strategy("default", "hawk", { getCredentialsFunc: getCredentials, hawk: { port: options.port || 80} });
@@ -213,20 +249,36 @@ User.prototype.login = function(request, reply) {
       .exec(function(err, profile){
       if (err) return reply(err);
       // Generate key pair for Hawk Auth
-      tokenModel().create({
-        userId : user._id,
-        tokenId : uuid.v4(),
-        key : uuid.v4(),
-        expire : moment().add(1, "day").format()
-      }, function(err, result) {
-        if (err) return reply(err);
+      if (self.options.authInMemory) {
+        var result = {
+          userId : user._id,
+          tokenId : uuid.v4(),
+          key : uuid.v4(),
+          expire : moment().add(1, "day").format()
+        }
+        inMemoryTokens.push(result);
         var response = reply({success:true})
           .type("application/json")
           .header("X-Token", result.tokenId + " " + result.key)
           .header("X-Current-User", profile._id)
           .hold();
         response.send();
-      })
+      } else {
+        tokenModel().create({
+          userId : user._id,
+          tokenId : uuid.v4(),
+          key : uuid.v4(),
+          expire : moment().add(1, "day").format()
+        }, function(err, result) {
+          if (err) return reply(err);
+          var response = reply({success:true})
+            .type("application/json")
+            .header("X-Token", result.tokenId + " " + result.key)
+            .header("X-Current-User", profile._id)
+            .hold();
+          response.send();
+        })
+      }
     });
   });
 }
@@ -249,6 +301,18 @@ User.prototype.login = function(request, reply) {
 **/
 
 User.prototype.logout = function(request, reply) {
+  var self = this;
+  if (self.options.authInMemory) {
+    for (var i = 0; i < inMemoryTokens.length; i++) {
+      var t = inMemoryTokens[i];
+      if (t.key === request.auth.credentials.key
+      && t.userId === request.auth.credentials.userId) {
+        inMemoryTokens.splice(i, 1);
+        break;
+      }
+    }
+    return reply({success: true}).type("application/json").statusCode = 200;
+  }
   // Remove token from db
   tokenModel().remove({key : request.auth.credentials.key, userId : request.auth.credentials.userId}, function(err, result){
     if (err) reply(err).code(400);
