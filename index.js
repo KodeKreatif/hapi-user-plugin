@@ -71,10 +71,7 @@ var User = function(server, options, next) {
   var getCredentials = function(id, callback) {
     var checkToken = function(id, cb){
       if (options.authInMemory) {
-        var result = false;
-        if (inMemoryTokens[id]) {
-          result = inMemoryTokens[id];
-        }
+        var result = inMemoryTokens[id];
         if (!result) {
           return cb({
             error: "Unauthorized",
