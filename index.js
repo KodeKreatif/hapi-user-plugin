@@ -71,6 +71,7 @@ var User = function(server, options, next) {
   var getCredentials = function(id, callback) {
     var checkToken = function(id, cb){
       if (options.authInMemory) {
+        console.log(inMemoryTokens);
         var result = false;
         if (inMemoryTokens[id]) {
           result = inMemoryTokens[id];
@@ -117,6 +118,7 @@ var User = function(server, options, next) {
               // Renew expire time for each request.
               result.expire = moment().add(1, "day").format();
               if (options.authInMemory) {
+                console.log(inMemoryTokens);
                 if (inMemoryTokens[result.tokenId]) {
                   inMemoryTokens[result.tokenId] = result;
                 }
@@ -132,6 +134,7 @@ var User = function(server, options, next) {
             });
          } else {
             if (options.authInMemory) {
+              console.log(inMemoryTokens);
               if (inMemoryTokens[result.tokenId]) {
                 delete(inMemoryTokens[result.tokenId]); 
               }
@@ -254,6 +257,7 @@ User.prototype.login = function(request, reply) {
       if (err) return reply(err);
       // Generate key pair for Hawk Auth
       if (self.options.authInMemory) {
+        console.log(inMemoryTokens);
         var result = {
           userId : user._id,
           tokenId : uuid.v4(),
@@ -308,6 +312,7 @@ User.prototype.login = function(request, reply) {
 User.prototype.logout = function(request, reply) {
   var self = this;
   if (self.options.authInMemory) {
+    console.log(inMemoryTokens);
     if (inMemoryKeys[request.auth.credentials.key]) {
       var tokenId = inMemoryKeys[request.auth.credentials.key];
       delete(inMemoryKeys[request.auth.credentials.key]);
