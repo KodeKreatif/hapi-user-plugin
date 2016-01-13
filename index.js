@@ -71,10 +71,7 @@ var User = function(server, options, next) {
   var getCredentials = function(id, callback) {
     var checkToken = function(id, cb){
       if (options.authInMemory) {
-        var result = false;
-        if (inMemoryTokens[id]) {
-          result = inMemoryTokens[id];
-        }
+        var result = inMemoryTokens[id];
         if (!result) {
           return cb({
             error: "Unauthorized",
@@ -123,6 +120,8 @@ var User = function(server, options, next) {
                 if (inMemoryKeys[result.key]) {
                   inMemoryKeys[result.key] = result;
                 }
+                console.log(inMemoryKeys);
+                console.log(inMemoryTokens);
                 return callback(null, credentials);
               }
               result.save(function(err) {
@@ -138,6 +137,8 @@ var User = function(server, options, next) {
               if (inMemoryKeys[result.key]) {
                 delete(inMemoryKeys[result.key]);
               }
+              console.log(inMemoryKeys);
+              console.log(inMemoryTokens);
             } else {
               result.remove();
             }
@@ -262,6 +263,8 @@ User.prototype.login = function(request, reply) {
         }
         inMemoryTokens[result.tokenId] = result;
         inMemoryKeys[result.key] = result;
+        console.log(inMemoryKeys);
+        console.log(inMemoryTokens);
         var response = reply({success:true})
           .type("application/json")
           .header("X-Token", result.tokenId + " " + result.key)
@@ -314,6 +317,8 @@ User.prototype.logout = function(request, reply) {
       if (inMemoryTokens[tokenId]) {
         delete(inMemoryTokens[tokenId]);
       }
+      console.log(inMemoryKeys);
+      console.log(inMemoryTokens);
     }
     return reply({success: true}).type("application/json").statusCode = 200;
   }
