@@ -67,14 +67,13 @@ var tokenModel = function() {
 var User = function(server, options, next) {
   this.server = server;
   this.options = options || {};
+  this.inMemoryTokens = inMemoryTokens;
+  this.inMemoryKeys = inMemoryKeys;
   
   var getCredentials = function(id, callback) {
     var checkToken = function(id, cb){
       if (options.authInMemory) {
-        var result = false;
-        if (inMemoryTokens[id]) {
-          result = inMemoryTokens[id];
-        }
+        var result = this.inMemoryTokens[id];
         if (!result) {
           return cb({
             error: "Unauthorized",
@@ -117,12 +116,14 @@ var User = function(server, options, next) {
               // Renew expire time for each request.
               result.expire = moment().add(1, "day").format();
               if (options.authInMemory) {
-                if (inMemoryTokens[result.tokenId]) {
-                  inMemoryTokens[result.tokenId] = result;
+                if (this.inMemoryTokens[result.tokenId]) {
+                  this.inMemoryTokens[result.tokenId] = result;
                 }
                 if (inMemoryKeys[result.key]) {
                   inMemoryKeys[result.key] = result;
                 }
+                console.log(inMemoryKeys);
+                console.log(this.inMemoryTokens);
                 return callback(null, credentials);
               }
               result.save(function(err) {
@@ -132,12 +133,14 @@ var User = function(server, options, next) {
             });
          } else {
             if (options.authInMemory) {
-              if (inMemoryTokens[result.tokenId]) {
-                delete(inMemoryTokens[result.tokenId]); 
+              if (this.inMemoryTokens[result.tokenId]) {
+                delete(this.inMemoryTokens[result.tokenId]); 
               }
               if (inMemoryKeys[result.key]) {
                 delete(inMemoryKeys[result.key]);
               }
+              console.log(inMemoryKeys);
+              console.log(this.inMemoryTokens);
             } else {
               result.remove();
             }
@@ -260,8 +263,10 @@ User.prototype.login = function(request, reply) {
           key : uuid.v4(),
           expire : moment().add(1, "day").format()
         }
-        inMemoryTokens[result.tokenId] = result;
+        self.inMemoryTokens[result.tokenId] = result;
         inMemoryKeys[result.key] = result;
+        console.log(inMemoryKeys);
+        console.log(self.inMemoryTokens);
         var response = reply({success:true})
           .type("application/json")
           .header("X-Token", result.tokenId + " " + result.key)
@@ -311,9 +316,11 @@ User.prototype.logout = function(request, reply) {
     if (inMemoryKeys[request.auth.credentials.key]) {
       var tokenId = inMemoryKeys[request.auth.credentials.key];
       delete(inMemoryKeys[request.auth.credentials.key]);
-      if (inMemoryTokens[tokenId]) {
-        delete(inMemoryTokens[tokenId]);
+      if (self.inMemoryTokens[tokenId]) {
+        delete(self.inMemoryTokens[tokenId]);
       }
+      console.log(inMemoryKeys);
+      console.log(self.inMemoryTokens);
     }
     return reply({success: true}).type("application/json").statusCode = 200;
   }
