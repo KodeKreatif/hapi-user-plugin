@@ -7,8 +7,8 @@ var uuid = require("uuid");
 var nodemailer = require("nodemailer");
 var faker = require("faker");
 var profileModel = require(__dirname + "/../../api/profiles/index").model();
-var inMemoryTokens = {};
-var inMemoryKeys = {};
+var InMemory = require("./inMemory");
+var inMemory = new InMemory();
 
 var schema = {
   username : Joi.string().email().required(),
@@ -71,10 +71,7 @@ var User = function(server, options, next) {
   var getCredentials = function(id, callback) {
     var checkToken = function(id, cb){
       if (options.authInMemory) {
-        var result = false;
-        if (inMemoryTokens[id]) {
-          result = inMemoryTokens[id];
-        }
+        var result = inMemory.getToken(id);
         if (!result) {
           return cb({
             error: "Unauthorized",
@@ -117,12 +114,7 @@ var User = function(server, options, next) {
               // Renew expire time for each request.
               result.expire = moment().add(1, "day").format();
               if (options.authInMemory) {
-                if (inMemoryTokens[result.tokenId]) {
-                  inMemoryTokens[result.tokenId] = result;
-                }
-                if (inMemoryKeys[result.key]) {
-                  inMemoryKeys[result.key] = result;
-                }
+                inMemory.set(result);
                 return callback(null, credentials);
               }
               result.save(function(err) {
@@ -132,12 +124,7 @@ var User = function(server, options, next) {
             });
          } else {
             if (options.authInMemory) {
-              if (inMemoryTokens[result.tokenId]) {
-                delete(inMemoryTokens[result.tokenId]); 
-              }
-              if (inMemoryKeys[result.key]) {
-                delete(inMemoryKeys[result.key]);
-              }
+              inMemory.set(result);
             } else {
               result.remove();
             }
@@ -260,8 +247,7 @@ User.prototype.login = function(request, reply) {
           key : uuid.v4(),
           expire : moment().add(1, "day").format()
         }
-        inMemoryTokens[result.tokenId] = result;
-        inMemoryKeys[result.key] = result;
+        inMemory.set(result);
         var response = reply({success:true})
           .type("application/json")
           .header("X-Token", result.tokenId + " " + result.key)
@@ -308,13 +294,7 @@ User.prototype.login = function(request, reply) {
 User.prototype.logout = function(request, reply) {
   var self = this;
   if (self.options.authInMemory) {
-    if (inMemoryKeys[request.auth.credentials.key]) {
-      var tokenId = inMemoryKeys[request.auth.credentials.key];
-      delete(inMemoryKeys[request.auth.credentials.key]);
-      if (inMemoryTokens[tokenId]) {
-        delete(inMemoryTokens[tokenId]);
-      }
-    }
+    inMemory.unset(request.auth.credentials.key);
     return reply({success: true}).type("application/json").statusCode = 200;
   }
   // Remove token from db
